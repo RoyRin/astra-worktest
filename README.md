@@ -42,3 +42,4 @@ If you have time for additional followup, you could consider exploring any of th
 * how the PGR changes if you use chain of thought
 * Trying more tasks or models (https://openrouter.ai/models; remember you have a budget so be aware of model costs)
 
+# astra-worktest
