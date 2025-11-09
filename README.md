@@ -1,3 +1,26 @@
+# README
+
+
+There are 3 sets of files that are relevant:
+
+## Compute baselines
+* code/baselines.py
+
+## Weak-to-strong results:
+
+Run weak-to-strong experiments, as a function of number of examples provided.
+* code/sweep_weak_label_counts/sweep_number_of_weak_labels.py
+* code/sweep_weak_label_counts/plot_weak_label_count_sweep.py
+
+## Plotting the data-correlations
+Plot correlations between Weak, Strong, and Weak-to-Strong results
+* code/plotting_and_analysis/plot_all_response_matching_grid.py
+
+
+
+
+
+
 # TASK
 
 Task Description:
@@ -19,19 +42,6 @@ empirical work:
 
 
 
-# Plan
-
-1. load TruthfulQA - what is it running - what does the data look like 
-2. set up the prompting for 2.1, 2.2, 2.3
-3. create plots for PGR
-
-
-
-# Roy's ideas for follow ups
-0. vary the number of baseline examples it's prompted with
-1. Try to see if we can do better using the bootstrapping method
-
-
 # Astra proposed Extra follow ups:
 
 If you have time for additional followup, you could consider exploring any of the following ideas, or others that you’re more interested in!
@@ -42,4 +52,10 @@ If you have time for additional followup, you could consider exploring any of th
 * how the PGR changes if you use chain of thought
 * Trying more tasks or models (https://openrouter.ai/models; remember you have a budget so be aware of model costs)
 
-# astra-worktest
+
+# Roy's ideas for follow ups
+0. vary the number of baseline examples it's prompted with
+1. Try to see if we can do better using the bootstrapping method
+
+
+
