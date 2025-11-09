@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Sweep over number of gold few-shot examples for multiple models.
+"""Sweep over number of weak few-shot examples for multiple model pairs.
 
-Evaluates models with varying numbers of gold few-shot examples:
+Evaluates strong models with varying numbers of weak few-shot examples:
 0, 5, 10, 25, 50, 100
+
+Tests weak -> strong model pairs:
+- llama-8b -> llama-8b
+- llama-8b -> llama-70b
+- llama-8b -> qwen-72b
+- llama-70b -> llama-70b
+- llama-70b -> qwen-72b
 """
 
 import asyncio
@@ -16,22 +23,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dataset_utils import load_truthful_qa
 from api_utils import OpenRouterAPI, get_batch_responses_with_few_shot
-from eval_utils import score_batch
+from eval_utils import score_batch, extract_answer_letter
 
 
-async def evaluate_model_with_n_shots(
+async def evaluate_with_weak_labels(
     api: OpenRouterAPI,
-    model: str,
+    weak_model: str,
+    strong_model: str,
     num_few_shot: int,
     test_set: list,
     train_set: list,
     system_prompt: str
 ) -> dict:
-    """Evaluate a model with N few-shot examples.
+    """Evaluate a strong model with weak few-shot labels.
 
     Args:
         api: OpenRouterAPI instance
-        model: Model ID
+        weak_model: Model ID for generating weak labels
+        strong_model: Model ID to evaluate
         num_few_shot: Number of few-shot examples (0 for zero-shot)
         test_set: Test questions
         train_set: Train questions (for few-shot examples)
@@ -40,19 +49,36 @@ async def evaluate_model_with_n_shots(
     Returns:
         Dictionary with results
     """
-    model_name = model.split('/')[-1]
-    print(f"   [{model_name}] {num_few_shot} shots...", end=" ", flush=True)
+    weak_name = weak_model.split('/')[-1]
+    strong_name = strong_model.split('/')[-1]
+    print(f"   [{weak_name} → {strong_name}] {num_few_shot} shots...", end=" ", flush=True)
 
     # Create few-shot examples
     if num_few_shot == 0:
         few_shot_examples = []
     else:
+        # Get weak model predictions on first num_few_shot questions from train set
+        train_questions_subset = [train_set[i].question for i in range(num_few_shot)]
+
+        weak_responses = await get_batch_responses_with_few_shot(
+            api=api,
+            questions=train_questions_subset,
+            few_shot_examples=[],  # No few-shot for generating weak labels
+            system_prompt=system_prompt,
+            model=weak_model,
+            temperature=0.0,
+            max_tokens=100
+        )
+
+        # Extract weak labels
+        weak_labels = [extract_answer_letter(resp.completion) for resp in weak_responses]
+
         few_shot_examples = [
-            (train_set[i].question, train_set[i].answer)
+            (train_set[i].question, weak_labels[i])
             for i in range(num_few_shot)
         ]
 
-    # Evaluate
+    # Evaluate strong model with weak labels
     test_questions = [q.question for q in test_set]
 
     responses = await get_batch_responses_with_few_shot(
@@ -60,7 +86,7 @@ async def evaluate_model_with_n_shots(
         questions=test_questions,
         few_shot_examples=few_shot_examples,
         system_prompt=system_prompt,
-        model=model,
+        model=strong_model,
         temperature=0.0,
         max_tokens=100
     )
@@ -82,17 +108,22 @@ async def main():
     """Main function."""
 
     print("=" * 70)
-    print("Gold Few-Shot Sweep: Varying Number of Examples")
+    print("Weak Few-Shot Sweep: Varying Number of Examples")
     print("=" * 70)
 
     # Configuration
     num_shots_list = [0, 5, 10, 25, 50, 100, 200]
-    models = [
-        "meta-llama/llama-3.1-8b-instruct",
-        "meta-llama/llama-3.1-70b-instruct",
-        "qwen/qwen-2.5-72b-instruct"
-    ]
     test_size = 200
+
+    # Define weak -> strong model pairs
+    # Only same size or larger models
+    model_pairs = [
+        ("meta-llama/llama-3.1-8b-instruct", "meta-llama/llama-3.1-8b-instruct"),
+        ("meta-llama/llama-3.1-8b-instruct", "meta-llama/llama-3.1-70b-instruct"),
+        ("meta-llama/llama-3.1-8b-instruct", "qwen/qwen-2.5-72b-instruct"),
+        ("meta-llama/llama-3.1-70b-instruct", "meta-llama/llama-3.1-70b-instruct"),
+        ("meta-llama/llama-3.1-70b-instruct", "qwen/qwen-2.5-72b-instruct"),
+    ]
 
     # 1. Load dataset
     print("\n1. Loading TruthfulQA dataset...")
@@ -116,31 +147,38 @@ async def main():
     system_prompt = "You are a helpful assistant. Answer the following multiple choice question by selecting the correct letter (A, B, C, D, etc.)."
 
     # 3. Run sweep
-    print(f"\n3. Running sweep over {len(num_shots_list)} shot counts for {len(models)} models...")
+    print(f"\n3. Running sweep over {len(num_shots_list)} shot counts for {len(model_pairs)} model pairs...")
     print(f"   Shot counts: {num_shots_list}\n")
 
     all_results = {}
 
-    for model in models:
-        model_name = model.split('/')[-1]
-        print(f"\n   Model: {model_name}")
+    for weak_model, strong_model in model_pairs:
+        pair_key = f"{weak_model} -> {strong_model}"
+        weak_name = weak_model.split('/')[-1]
+        strong_name = strong_model.split('/')[-1]
 
-        model_results = []
+        print(f"\n   Pair: {weak_name} → {strong_name}")
+
+        pair_results = []
 
         for num_shots in num_shots_list:
-            result = await evaluate_model_with_n_shots(
+            result = await evaluate_with_weak_labels(
                 api=api,
-                model=model,
+                weak_model=weak_model,
+                strong_model=strong_model,
                 num_few_shot=num_shots,
                 test_set=test_set,
                 train_set=train_set,
                 system_prompt=system_prompt
             )
-            model_results.append(result)
+            pair_results.append(result)
 
-        all_results[model] = {
-            "model_name": model_name,
-            "results": model_results
+        all_results[pair_key] = {
+            "weak_model": weak_model,
+            "weak_model_name": weak_name,
+            "strong_model": strong_model,
+            "strong_model_name": strong_name,
+            "results": pair_results
         }
 
     # 4. Save results
@@ -149,18 +187,18 @@ async def main():
     results_dir.mkdir(exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = results_dir / f"gold_sweep_{timestamp}.json"
+    output_file = results_dir / f"weak_sweep_{timestamp}.json"
 
     output_data = {
         "timestamp": timestamp,
-        "experiment": "gold_labels_sweep",
+        "experiment": "weak_labels_sweep",
         "num_shots_list": num_shots_list,
         "dataset": {
             "name": "TruthfulQA",
             "test_size": len(test_set),
             "train_size": len(train_set),
         },
-        "models": all_results
+        "model_pairs": all_results
     }
 
     with open(output_file, 'w') as f:
@@ -171,9 +209,8 @@ async def main():
     print("RESULTS SUMMARY")
     print("=" * 70)
 
-    for model, data in all_results.items():
-        model_name = data["model_name"]
-        print(f"\n{model_name}:")
+    for pair_key, data in all_results.items():
+        print(f"\n{data['weak_model_name']} → {data['strong_model_name']}:")
         for result in data["results"]:
             num_shots = result["num_few_shot"]
             accuracy = result["accuracy"]

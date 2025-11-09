@@ -13,9 +13,9 @@ empirical work:
 
 2. 
     You should determine a Performance Gap Recovered (PGR) metric by 
-        1. comparing the performance of the weaker model when prompted with "gold" few-shot examples, 
-        2. the performance of the strong model when prompted with "weak-labelled" few-shot examples, 
-        3. the performance of the strong model when prompted with "gold" few-shot examples.
+        1. comparing the performance of the weaker model when prompted with "gold" few-shot examples,  < done
+        2. the performance of the strong model when prompted with "weak-labelled" few-shot examples, < done
+        3. the performance of the strong model when prompted with "gold" few-shot examples. < done
 
 
 
@@ -27,8 +27,12 @@ empirical work:
 
 
 
+# Roy's ideas for follow ups
+0. vary the number of baseline examples it's prompted with
+1. Try to see if we can do better using the bootstrapping method
 
-# Extra follow ups:
+
+# Astra proposed Extra follow ups:
 
 If you have time for additional followup, you could consider exploring any of the following ideas, or others that you’re more interested in!
 

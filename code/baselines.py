@@ -95,9 +95,36 @@ async def main():
         print(f"       {model_name}: {eval_results['accuracy']:.1%} ({eval_results['num_correct']}/{eval_results['num_total']})")
 
     # 6. Save results
-    output_file = results_dir / f"baseline_{timestamp}.json"
+    # Create weak_labels subdirectory
+    weak_labels_dir = results_dir / "weak_labels"
+    weak_labels_dir.mkdir(exist_ok=True)
+
+    # Save combined results (all models)
+    output_file = weak_labels_dir / f"baseline_{timestamp}.json"
     with open(output_file, 'w') as f:
         json.dump(results, f, indent=2)
+
+    # Save individual model results
+    for model, model_results in results["models"].items():
+        model_slug = model.replace('/', '_')
+        individual_file = weak_labels_dir / f"{model_slug}_baseline.json"
+
+        individual_data = {
+            "timestamp": timestamp,
+            "model": model,
+            "model_name": model_results["model_name"],
+            "dataset": results["dataset"],
+            "few_shot": results["few_shot"],
+            "results": {
+                "accuracy": model_results["accuracy"],
+                "num_correct": model_results["num_correct"],
+                "num_total": model_results["num_total"],
+                "predictions": model_results["predictions"],
+            }
+        }
+
+        with open(individual_file, 'w') as f:
+            json.dump(individual_data, f, indent=2)
 
     print("\n" + "=" * 70)
     print("RESULTS SUMMARY")
@@ -112,7 +139,9 @@ async def main():
         print(f"  Accuracy: {accuracy:.1%} ({num_correct}/{num_total})")
 
     print("\n" + "=" * 70)
-    print(f"Results saved to: {output_file}")
+    print(f"Results saved to:")
+    print(f"  Combined: {output_file}")
+    print(f"  Individual: {weak_labels_dir}/<model>_baseline.json")
     print("=" * 70 + "\n")
 
 
