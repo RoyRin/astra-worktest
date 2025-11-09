@@ -76,8 +76,8 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
         "llama-3.1-70b-instruct": "#ff7f0e",  # Orange
     }
 
-    # Define markers by strong model
-    strong_model_markers = {
+    # Define markers by model (used for both strong models and gold baselines)
+    model_markers = {
         "llama-3.1-8b-instruct": "o",     # Circle
         "llama-3.1-70b-instruct": "s",    # Square
         "qwen-2.5-72b-instruct": "^",     # Triangle
@@ -89,7 +89,7 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
         strong_name = data["strong_name"]
 
         color = weak_model_colors.get(weak_name, "#808080")
-        marker = strong_model_markers.get(strong_name, "o")
+        marker = model_markers.get(strong_name, "o")
         label = f"{weak_name} → {strong_name}"
 
         ax.plot(
@@ -131,12 +131,13 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
 
-    # Create custom legend with 2 columns organized by weak model
+    # Create custom legend with 3 columns organized by weak model
     handles, labels = ax.get_legend_handles_labels()
 
     # Group pairs by weak model
     weak_8b_pairs = []
     weak_70b_pairs = []
+    gold_pairs = []
 
     for pair_key, data in pairs_data.items():
         for h, l in zip(handles, labels):
@@ -150,14 +151,14 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
     weak_8b_pairs.sort(key=lambda x: x[1])
     weak_70b_pairs.sort(key=lambda x: x[1])
 
-    # Combine: first all 8b pairs, then all 70b pairs
-    # This ensures 8b appears in first column with ncol=2
-    sorted_items = weak_8b_pairs + weak_70b_pairs
-
     # Add gold baselines if provided
     if gold_results:
         # Plot gold baselines with dashed lines and lighter colors
-        for model, model_data in gold_results["models"].items():
+        # Sort models to ensure consistent ordering
+        sorted_models = sorted(gold_results["models"].items(),
+                              key=lambda x: x[1]["model_name"])
+
+        for model, model_data in sorted_models:
             model_name = model_data["model_name"]
 
             num_shots = []
@@ -167,26 +168,32 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
                 num_shots.append(result["num_few_shot"])
                 accuracies.append(result["accuracy"] * 100)
 
-            # Use gray dashed lines for gold baselines
+            # Use gray dashed lines for gold baselines with same markers as model
+            marker = model_markers.get(model_name, "o")
+
             line, = ax.plot(
                 num_shots,
                 accuracies,
-                marker='D',  # Diamond marker
+                marker=marker,
                 color='#808080',  # Gray
                 linewidth=2,
-                markersize=6,
+                markersize=8,
                 label=f"{model_name} (gold)",
                 linestyle='--',
                 alpha=0.6
             )
 
-            sorted_items.append((line, f"{model_name} (gold)"))
+            gold_pairs.append((line, f"{model_name} (gold)"))
+
+    # Combine: first gold pairs, then 8b pairs, then 70b pairs
+    # This ensures gold appears in first column with ncol=3
+    sorted_items = gold_pairs + weak_8b_pairs + weak_70b_pairs
 
     sorted_handles = [item[0] for item in sorted_items]
     sorted_labels = [item[1] for item in sorted_items]
 
     ax.legend(sorted_handles, sorted_labels, loc='lower right', fontsize=10,
-              framealpha=0.9, ncol=2)
+              framealpha=0.9, ncol=3)
 
     # Add info text
     test_size = results["dataset"]["test_size"]
@@ -206,6 +213,151 @@ def plot_weak_sweep(results: dict, gold_results: dict = None, output_path: Path 
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"Plot saved to: {output_path}")
+    else:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_self_supervision(results: dict, gold_results: dict = None, output_path: Path = None):
+    """Plot self-supervision cases where weak model = strong model.
+
+    Args:
+        results: Weak label sweep results
+        gold_results: Optional gold label sweep results to overlay
+        output_path: Path to save the plot
+    """
+
+    # Extract only self-supervision pairs (weak == strong)
+    self_sup_data = {}
+
+    for pair_key, pair_info in results["model_pairs"].items():
+        weak_name = pair_info["weak_model_name"]
+        strong_name = pair_info["strong_model_name"]
+
+        # Only include if weak == strong
+        if weak_name == strong_name:
+            num_shots = []
+            accuracies = []
+
+            for result in pair_info["results"]:
+                num_shots.append(result["num_few_shot"])
+                accuracies.append(result["accuracy"] * 100)
+
+            self_sup_data[weak_name] = {
+                "num_shots": num_shots,
+                "accuracies": accuracies
+            }
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Define colors for self-supervision models
+    self_sup_colors = {
+        "llama-3.1-8b-instruct": "#1f77b4",   # Blue
+        "llama-3.1-70b-instruct": "#ff7f0e",  # Orange
+    }
+
+    # Plot each self-supervision case
+    for model_name, data in sorted(self_sup_data.items()):
+        color = self_sup_colors.get(model_name, "#2ca02c")
+
+        ax.plot(
+            data["num_shots"],
+            data["accuracies"],
+            marker='o',
+            color=color,
+            linewidth=2.5,
+            markersize=10,
+            label=f"{model_name} (self-sup)",
+            linestyle='-',
+            alpha=0.8
+        )
+
+        # Add value labels at all points
+        for x, y in zip(data["num_shots"], data["accuracies"]):
+            ax.annotate(
+                f'{y:.1f}%',
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, 10),
+                ha='center',
+                fontsize=9,
+                alpha=0.7
+            )
+
+    # Define markers for consistency
+    model_markers = {
+        "llama-3.1-8b-instruct": "o",     # Circle
+        "llama-3.1-70b-instruct": "s",    # Square
+        "qwen-2.5-72b-instruct": "^",     # Triangle
+    }
+
+    # Add gold baselines if provided
+    if gold_results:
+        sorted_models = sorted(gold_results["models"].items(),
+                              key=lambda x: x[1]["model_name"])
+
+        for model, model_data in sorted_models:
+            model_name = model_data["model_name"]
+
+            num_shots = []
+            accuracies = []
+
+            for result in model_data["results"]:
+                num_shots.append(result["num_few_shot"])
+                accuracies.append(result["accuracy"] * 100)
+
+            # Use gray dashed lines for gold baselines with same markers as model
+            marker = model_markers.get(model_name, "o")
+
+            ax.plot(
+                num_shots,
+                accuracies,
+                marker=marker,
+                color='#808080',
+                linewidth=2,
+                markersize=9,
+                label=f"{model_name} (gold)",
+                linestyle='--',
+                alpha=0.6
+            )
+
+    # Customize plot
+    ax.set_xlabel('Number of Few-Shot Examples', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Accuracy (%)', fontsize=13, fontweight='bold')
+    ax.set_title('Self-Supervision: Models Learning from Their Own Predictions\nTruthfulQA Dataset',
+                 fontsize=15, fontweight='bold', pad=20)
+
+    # Set x-axis
+    ax.set_xlim(-5, max(results["num_shots_list"]) + 5)
+    ax.set_xticks(results["num_shots_list"])
+
+    # Add grid
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_axisbelow(True)
+
+    # Add legend
+    ax.legend(loc='lower right', fontsize=11, framealpha=0.9)
+
+    # Add info text
+    test_size = results["dataset"]["test_size"]
+    timestamp = results["timestamp"]
+
+    info_text = f"Test size: {test_size} questions\nRun: {timestamp}\nSelf-supervision: weak = strong"
+
+    ax.text(0.02, 0.98, info_text,
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
+    plt.tight_layout()
+
+    # Save or show
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Self-supervision plot saved to: {output_path}")
     else:
         plt.show()
 
@@ -290,12 +442,18 @@ def main():
     # Print summary
     print_summary(results)
 
-    # Create output path with timestamp
+    # Create output paths with timestamp
     plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = results_path.parent / f"{results_path.stem}_plot_{plot_timestamp}.png"
+    output_path_full = results_path.parent / f"{results_path.stem}_plot_{plot_timestamp}.png"
+    output_path_self_sup = results_path.parent / f"{results_path.stem}_plot_self_sup_{plot_timestamp}.png"
 
-    # Plot results
-    plot_weak_sweep(results, gold_results, output_path)
+    # Plot full results
+    print("\nGenerating full plot...")
+    plot_weak_sweep(results, gold_results, output_path_full)
+
+    # Plot self-supervision only
+    print("\nGenerating self-supervision plot...")
+    plot_self_supervision(results, gold_results, output_path_self_sup)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ OPENROUTER_PRICING = {
     "meta-llama/llama-3.1-405b-instruct": {"input": 0.2, "output": 0.2},
     "meta-llama/llama-3.1-70b-instruct": {"input": 0.8, "output": 0.8},
     "meta-llama/llama-3.1-8b-instruct": {"input": 3.0, "output": 3.0},
+    "qwen/qwen-2.5-72b-instruct": {"input": 0.07, "output": 0.26},
 }
 
 
@@ -119,21 +120,31 @@ class OpenRouterAPI:
     def __init__(
         self,
         api_key: Optional[str] = None,
+        api_key_path: Optional[str] = None,
         cache_dir: Path = Path("./cache"),
         num_threads: int = 50
     ):
         """Initialize OpenRouter API client.
 
         Args:
-            api_key: OpenRouter API key (if None, reads from SECRETS/api.key or OPENROUTER_API_KEY env var)
+            api_key: OpenRouter API key (if None, reads from api_key_path or SECRETS/api.key or OPENROUTER_API_KEY env var)
+            api_key_path: Path to file containing API key (optional, takes precedence over default SECRETS/api.key)
             cache_dir: Directory for caching responses (default: ./cache)
             num_threads: Max parallel requests (default: 50)
         """
-        # Set up API key
+        # Set up API key with priority: api_key > api_key_path > env var > default file
         if api_key:
             os.environ["OPENROUTER_API_KEY"] = api_key
+        elif api_key_path:
+            # Read from specified path
+            key_file = Path(api_key_path)
+            if key_file.exists():
+                api_key = key_file.read_text().strip()
+                os.environ["OPENROUTER_API_KEY"] = api_key
+            else:
+                raise ValueError(f"API key file not found: {api_key_path}")
         elif "OPENROUTER_API_KEY" not in os.environ:
-            # Try to read from SECRETS/api.key
+            # Try to read from default SECRETS/api.key
             api_key_file = Path(__file__).parent.parent / "SECRETS" / "api.key"
             if api_key_file.exists():
                 api_key = api_key_file.read_text().strip()
@@ -142,8 +153,9 @@ class OpenRouterAPI:
                 raise ValueError(
                     "No API key provided. Please either:\n"
                     "1. Pass api_key parameter to OpenRouterAPI()\n"
-                    "2. Set OPENROUTER_API_KEY environment variable\n"
-                    "3. Create SECRETS/api.key file with your API key"
+                    "2. Pass api_key_path parameter to OpenRouterAPI()\n"
+                    "3. Set OPENROUTER_API_KEY environment variable\n"
+                    "4. Create SECRETS/api.key file with your API key"
                 )
 
         # Safety-tooling assumes OPENAI_API_KEY is set

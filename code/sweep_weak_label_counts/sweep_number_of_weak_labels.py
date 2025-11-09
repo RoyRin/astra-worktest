@@ -12,6 +12,7 @@ Tests weak -> strong model pairs:
 - llama-70b -> qwen-72b
 """
 
+import argparse
 import asyncio
 import json
 import sys
@@ -101,18 +102,32 @@ async def evaluate_with_weak_labels(
         "accuracy": eval_results['accuracy'],
         "num_correct": eval_results['num_correct'],
         "num_total": eval_results['num_total'],
+        "predictions": eval_results['predictions'],  # Include predictions for correlation analysis
     }
 
 
 async def main():
     """Main function."""
 
+    # Parse arguments
+    parser = argparse.ArgumentParser(
+        description="Sweep over number of weak few-shot examples for multiple model pairs"
+    )
+    parser.add_argument(
+        "--api-key-path",
+        type=str,
+        default=None,
+        help="Path to API key file (default: SECRETS/api.key)"
+    )
+
+    args = parser.parse_args()
+
     print("=" * 70)
     print("Weak Few-Shot Sweep: Varying Number of Examples")
     print("=" * 70)
 
     # Configuration
-    num_shots_list = [0, 5, 10, 25, 50, 100, 200]
+    num_shots_list = [0, 5, 10, 25, 50, 100]
     test_size = 200
 
     # Define weak -> strong model pairs
@@ -123,6 +138,7 @@ async def main():
         ("meta-llama/llama-3.1-8b-instruct", "qwen/qwen-2.5-72b-instruct"),
         ("meta-llama/llama-3.1-70b-instruct", "meta-llama/llama-3.1-70b-instruct"),
         ("meta-llama/llama-3.1-70b-instruct", "qwen/qwen-2.5-72b-instruct"),
+        ("qwen/qwen-2.5-72b-instruct", "qwen/qwen-2.5-72b-instruct"),
     ]
 
     # 1. Load dataset
@@ -142,7 +158,18 @@ async def main():
     print("\n2. Initializing OpenRouter API...")
     # Cache in project root, not in code/
     cache_dir = Path(__file__).parent.parent.parent / "cache"
-    api = OpenRouterAPI(cache_dir=cache_dir, num_threads=50)
+
+    # Handle API key path
+    if args.api_key_path:
+        api_key_path = Path(args.api_key_path)
+        if not api_key_path.exists():
+            print(f"\nError: API key file not found: {api_key_path}")
+            return
+        print(f"   Using API key from: {api_key_path}")
+        api = OpenRouterAPI(cache_dir=cache_dir, num_threads=50, api_key_path=str(api_key_path))
+    else:
+        print(f"   Using default API key from SECRETS/api.key")
+        api = OpenRouterAPI(cache_dir=cache_dir, num_threads=50)
 
     system_prompt = "You are a helpful assistant. Answer the following multiple choice question by selecting the correct letter (A, B, C, D, etc.)."
 
@@ -186,6 +213,10 @@ async def main():
     results_dir = Path(__file__).parent.parent.parent / "results"
     results_dir.mkdir(exist_ok=True)
 
+    # Create weak_labels subdirectory
+    weak_labels_dir = results_dir / "weak_labels"
+    weak_labels_dir.mkdir(exist_ok=True)
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = results_dir / f"weak_sweep_{timestamp}.json"
 
@@ -201,8 +232,35 @@ async def main():
         "model_pairs": all_results
     }
 
+    # Save combined results
     with open(output_file, 'w') as f:
         json.dump(output_data, f, indent=2)
+
+    # Save individual model pair results in weak_labels/
+    print("\n4. Saving individual model pair results to weak_labels/...")
+    for pair_key, pair_data in all_results.items():
+        weak_slug = pair_data["weak_model"].replace('/', '_')
+        strong_slug = pair_data["strong_model"].replace('/', '_')
+
+        # Save one file per model pair with all shot counts
+        individual_file = weak_labels_dir / f"w2s_{weak_slug}_to_{strong_slug}_{timestamp}.json"
+
+        individual_data = {
+            "timestamp": timestamp,
+            "experiment": "weak_to_strong_sweep",
+            "weak_model": pair_data["weak_model"],
+            "weak_model_name": pair_data["weak_model_name"],
+            "strong_model": pair_data["strong_model"],
+            "strong_model_name": pair_data["strong_model_name"],
+            "dataset": output_data["dataset"],
+            "num_shots_list": num_shots_list,
+            "results_by_shot_count": pair_data["results"]
+        }
+
+        with open(individual_file, 'w') as f:
+            json.dump(individual_data, f, indent=2)
+
+        print(f"   Saved: {individual_file.name}")
 
     # 5. Print summary
     print("\n" + "=" * 70)
@@ -217,7 +275,8 @@ async def main():
             print(f"  {num_shots:3d} shots: {accuracy:.1%}")
 
     print("\n" + "=" * 70)
-    print(f"Results saved to: {output_file}")
+    print(f"Combined results saved to: {output_file}")
+    print(f"Individual pair results saved to: {weak_labels_dir}/")
     print("=" * 70 + "\n")
 
 
