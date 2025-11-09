@@ -1,0 +1,142 @@
+{
+  "timestamp": "20251109_102109",
+  "experiment": "gold_labels_sweep",
+  "num_shots_list": [
+    0,
+    5,
+    10,
+    25,
+    50,
+    100
+  ],
+  "dataset": {
+    "name": "TruthfulQA",
+    "test_size": 200,
+    "train_size": 484
+  },
+  "models": {
+    "meta-llama/llama-3.1-8b-instruct": {
+      "model_name": "llama-3.1-8b-instruct",
+      "results": [
+        {
+          "num_few_shot": 0,
+          "accuracy": 0.62,
+          "num_correct": 124,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 5,
+          "accuracy": 0.595,
+          "num_correct": 119,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 10,
+          "accuracy": 0.64,
+          "num_correct": 128,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 25,
+          "accuracy": 0.645,
+          "num_correct": 129,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 50,
+          "accuracy": 0.785,
+          "num_correct": 157,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 100,
+          "accuracy": 0.84,
+          "num_correct": 168,
+          "num_total": 200
+        }
+      ]
+    },
+    "meta-llama/llama-3.1-70b-instruct": {
+      "model_name": "llama-3.1-70b-instruct",
+      "results": [
+        {
+          "num_few_shot": 0,
+          "accuracy": 0.78,
+          "num_correct": 156,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 5,
+          "accuracy": 0.73,
+          "num_correct": 146,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 10,
+          "accuracy": 0.79,
+          "num_correct": 158,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 25,
+          "accuracy": 0.835,
+          "num_correct": 167,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 50,
+          "accuracy": 0.895,
+          "num_correct": 179,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 100,
+          "accuracy": 0.895,
+          "num_correct": 179,
+          "num_total": 200
+        }
+      ]
+    },
+    "qwen/qwen-2.5-72b-instruct": {
+      "model_name": "qwen-2.5-72b-instruct",
+      "results": [
+        {
+          "num_few_shot": 0,
+          "accuracy": 0.85,
+          "num_correct": 170,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 5,
+          "accuracy": 0.845,
+          "num_correct": 169,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 10,
+          "accuracy": 0.87,
+          "num_correct": 174,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 25,
+          "accuracy": 0.865,
+          "num_correct": 173,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 50,
+          "accuracy": 0.895,
+          "num_correct": 179,
+          "num_total": 200
+        },
+        {
+          "num_few_shot": 100,
+          "accuracy": 0.9,
+          "num_correct": 180,
+          "num_total": 200
+        }
+      ]
+    }
+  }
+}
