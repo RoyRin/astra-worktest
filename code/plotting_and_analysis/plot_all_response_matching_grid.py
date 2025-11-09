@@ -130,6 +130,80 @@ def analyze_response_matching_over_shots(
     return results_by_shots, weak_wrong_results
 
 
+def analyze_w2s_correctness_conditioned_on_strong(
+    w2s_results: dict,
+    weak_baseline: dict,
+    strong_baseline: dict,
+    ground_truth: list
+) -> tuple:
+    """Analyze W2S correctness conditioned on strong model correctness.
+
+    Returns:
+        Tuple of (strong_wrong_results, strong_correct_results)
+        - strong_wrong_results: % W2S correct when strong is wrong
+        - strong_correct_results: % W2S wrong when strong is correct
+    """
+    weak_preds = weak_baseline["results"]["predictions"]
+    strong_preds = strong_baseline["results"]["predictions"]
+
+    strong_wrong_results = []
+    strong_correct_results = []
+
+    for shot_result in w2s_results["results_by_shot_count"]:
+        num_shots = shot_result["num_few_shot"]
+        w2s_preds = shot_result["predictions"]
+
+        num_questions = len(w2s_preds)
+
+        # Count when strong is wrong
+        strong_wrong_count = 0
+        w2s_correct_when_strong_wrong = 0
+
+        # Count when strong is correct
+        strong_correct_count = 0
+        w2s_wrong_when_strong_correct = 0
+
+        for i in range(num_questions):
+            w2s_pred = w2s_preds[i]
+            strong_pred = strong_preds[i]
+            gt = ground_truth[i]
+
+            strong_is_correct = (strong_pred == gt)
+            w2s_is_correct = (w2s_pred == gt)
+
+            if strong_is_correct:
+                strong_correct_count += 1
+                if not w2s_is_correct:
+                    w2s_wrong_when_strong_correct += 1
+            else:
+                strong_wrong_count += 1
+                if w2s_is_correct:
+                    w2s_correct_when_strong_wrong += 1
+
+        # Calculate percentages
+        if strong_wrong_count > 0:
+            pct_w2s_correct_when_strong_wrong = w2s_correct_when_strong_wrong / strong_wrong_count * 100
+        else:
+            pct_w2s_correct_when_strong_wrong = 0
+
+        if strong_correct_count > 0:
+            pct_w2s_wrong_when_strong_correct = w2s_wrong_when_strong_correct / strong_correct_count * 100
+        else:
+            pct_w2s_wrong_when_strong_correct = 0
+
+        strong_wrong_results.append({
+            "num_shots": num_shots,
+            "pct_w2s_correct": pct_w2s_correct_when_strong_wrong,
+        })
+
+        strong_correct_results.append({
+            "num_shots": num_shots,
+            "pct_w2s_wrong": pct_w2s_wrong_when_strong_correct,
+        })
+
+    return strong_wrong_results, strong_correct_results
+
+
 def plot_single_panel(ax, results, weak_name, strong_name, show_ylabel=False, show_xlabel=False):
     """Plot a single panel of the grid."""
     # Extract data
@@ -170,6 +244,48 @@ def plot_single_panel(ax, results, weak_name, strong_name, show_ylabel=False, sh
 
     # Grid
     ax.grid(True, alpha=0.2, linestyle='--', axis='y')
+    ax.set_axisbelow(True)
+
+    # Title showing weak → strong
+    ax.set_title(f'{weak_name} → {strong_name}', fontsize=9, fontweight='bold')
+
+
+def plot_conditional_correctness_panel(ax, strong_wrong_data, strong_correct_data, weak_name, strong_name,
+                                       show_ylabel=False, show_xlabel=False):
+    """Plot W2S correctness conditioned on strong model performance.
+
+    Two lines:
+    - W2S correct when strong is wrong (higher is better - shows W2S fixing strong's errors)
+    - W2S wrong when strong is correct (lower is better - shows W2S not breaking strong's successes)
+    """
+    shot_counts_wrong = [r["num_shots"] for r in strong_wrong_data]
+    pct_w2s_correct_when_strong_wrong = [r["pct_w2s_correct"] for r in strong_wrong_data]
+
+    shot_counts_correct = [r["num_shots"] for r in strong_correct_data]
+    pct_w2s_wrong_when_strong_correct = [r["pct_w2s_wrong"] for r in strong_correct_data]
+
+    # Plot both lines
+    ax.plot(shot_counts_wrong, pct_w2s_correct_when_strong_wrong,
+            marker='o', color='#2ca02c', linewidth=2, markersize=6,
+            label='W2S correct | Strong wrong', alpha=0.8)
+
+    ax.plot(shot_counts_correct, pct_w2s_wrong_when_strong_correct,
+            marker='s', color='#d62728', linewidth=2, markersize=6,
+            label='W2S wrong | Strong correct', alpha=0.8)
+
+    # Customize
+    ax.set_xlim(min(shot_counts_wrong), max(shot_counts_wrong))
+    ax.set_ylim(0, 100)
+    ax.set_xticks(shot_counts_wrong)
+    ax.tick_params(labelsize=8)
+
+    if show_xlabel:
+        ax.set_xlabel('# Few-Shot Examples', fontsize=9)
+    if show_ylabel:
+        ax.set_ylabel('Percentage (%)', fontsize=9)
+
+    # Grid
+    ax.grid(True, alpha=0.2, linestyle='--')
     ax.set_axisbelow(True)
 
     # Title showing weak → strong
@@ -218,6 +334,7 @@ def main():
     print("\nProcessing model pairs...")
     all_results_dict = {}
     weak_wrong_results_dict = {}
+    conditional_correctness_dict = {}
 
     for i, weak_model in enumerate(models):
         for j, strong_model in enumerate(models):
@@ -236,14 +353,23 @@ def main():
                 print(f"    Warning: No results found")
                 all_results_dict[(i, j)] = None
                 weak_wrong_results_dict[(i, j)] = None
+                conditional_correctness_dict[(i, j)] = None
                 continue
 
             # Use most recent
             w2s_file = max(w2s_files, key=lambda p: p.stat().st_mtime)
             w2s_results = load_results(w2s_file)
 
-            # Analyze
+            # Analyze response matching
             results, weak_wrong = analyze_response_matching_over_shots(
+                w2s_results,
+                baselines[weak_model],
+                baselines[strong_model],
+                ground_truth
+            )
+
+            # Analyze conditional correctness
+            strong_wrong, strong_correct = analyze_w2s_correctness_conditioned_on_strong(
                 w2s_results,
                 baselines[weak_model],
                 baselines[strong_model],
@@ -252,6 +378,7 @@ def main():
 
             all_results_dict[(i, j)] = (results, weak_short, strong_short)
             weak_wrong_results_dict[(i, j)] = (weak_wrong, weak_short, strong_short)
+            conditional_correctness_dict[(i, j)] = (strong_wrong, strong_correct, weak_short, strong_short)
 
     # Create Figure 1: All questions
     print("\n" + "=" * 80)
@@ -356,6 +483,57 @@ def main():
     print(f"Grid plot (when weak wrong) saved to: {output_path2}")
     print(f"{'=' * 80}\n")
     plt.close(fig2)
+
+    # Create Figure 3: W2S correctness conditioned on strong model performance
+    print("\n" + "=" * 80)
+    print("Creating grid plot 3: W2S Correctness Conditioned on Strong Performance")
+    print("=" * 80)
+
+    fig3, axes3 = plt.subplots(3, 3, figsize=(16, 12))
+
+    for (i, j), data in conditional_correctness_dict.items():
+        if data is None:
+            axes3[i, j].text(0.5, 0.5, 'No data', ha='center', va='center',
+                           transform=axes3[i, j].transAxes)
+            axes3[i, j].set_xticks([])
+            axes3[i, j].set_yticks([])
+        else:
+            strong_wrong, strong_correct, weak_short, strong_short = data
+            show_ylabel = (j == 0)
+            show_xlabel = (i == 2)
+            plot_conditional_correctness_panel(axes3[i, j], strong_wrong, strong_correct,
+                                              weak_short, strong_short,
+                                              show_ylabel, show_xlabel)
+
+    # Add row labels (weak models) on the left
+    for i, weak_model in enumerate(models):
+        weak_short = model_short_names[weak_model]
+        fig3.text(0.02, 0.83 - i * 0.31, f'Weak:\n{weak_short}',
+                va='center', ha='center', fontsize=11, fontweight='bold',
+                rotation=90)
+
+    # Overall title
+    fig3.suptitle('W2S Correctness Conditioned on Strong Model Performance\n' +
+                 'Green (↑ better): W2S fixes strong errors | Red (↓ better): W2S breaks strong successes',
+                 fontsize=14, fontweight='bold', y=0.99)
+
+    # Add legend at the bottom
+    handles, labels = axes3[0, 0].get_legend_handles_labels()
+    fig3.legend(handles, labels,
+              loc='lower center', ncol=2, fontsize=10,
+              bbox_to_anchor=(0.5, -0.01), framealpha=0.9)
+
+    # Adjust layout
+    fig3.tight_layout(rect=[0.04, 0.02, 1, 0.95])
+
+    # Save
+    output_path3 = plots_dir / f"w2s_conditional_correctness_grid_{timestamp}.png"
+
+    fig3.savefig(output_path3, dpi=300, bbox_inches='tight')
+    print(f"\n{'=' * 80}")
+    print(f"Grid plot (conditional correctness) saved to: {output_path3}")
+    print(f"{'=' * 80}\n")
+    plt.close(fig3)
 
 
 if __name__ == "__main__":
